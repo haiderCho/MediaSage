@@ -2,11 +2,15 @@
 
 import { motion } from 'framer-motion';
 import { Item } from '@/data/schema';
-import { Star, Zap } from 'lucide-react';
+import { Zap, ChevronRight, Activity, Cpu } from 'lucide-react';
 import ImageCard from './ImageCard';
 
 interface ExtendedItem extends Item {
   score?: number;
+  similarity?: number;
+  keywordBoost?: number;
+  genreBoost?: number;
+  reason?: string;
 }
 
 interface Props {
@@ -18,14 +22,23 @@ const container = {
   show: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.05
+      staggerChildren: 0.08,
+      delayChildren: 0.1
     }
   }
 };
 
 const itemAnim = {
-  hidden: { y: 20, opacity: 0 },
-  show: { y: 0, opacity: 1 }
+  hidden: { x: -20, opacity: 0 },
+  show: { 
+    x: 0, 
+    opacity: 1,
+    transition: {
+      type: "spring",
+      stiffness: 120,
+      damping: 20
+    }
+  }
 };
 
 export default function ResultsGrid({ results }: Props) {
@@ -36,44 +49,108 @@ export default function ResultsGrid({ results }: Props) {
       variants={container}
       initial="hidden"
       animate="show"
-      className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 w-full"
+      className="grid grid-cols-1 xl:grid-cols-2 gap-10 w-full pb-32"
     >
-      {results.map((item) => (
+      {results.map((item, index) => (
         <motion.div
           key={item.id}
           variants={itemAnim}
-          className="group relative bg-secondary/30 border border-white/5 rounded-2xl overflow-hidden hover:bg-secondary/50 transition-all flex flex-col h-[400px]"
+          className="group flex flex-col md:flex-row bg-[#080808] border-2 border-white/5 hover:border-primary transition-all duration-700 overflow-hidden relative"
         >
+          {/* Rank Index */}
+          <div className="absolute top-0 left-0 bg-primary text-black px-3 py-1 font-mono text-[10px] font-black z-30 italic">
+            #{String(index + 1).padStart(2, '0')}
+          </div>
+
           {/* Image Section */}
-          <div className="h-48 w-full relative overflow-hidden bg-black/50">
+          <div className="w-full md:w-52 h-64 md:h-auto shrink-0 relative overflow-hidden bg-black border-r border-white/5 group-hover:border-primary/20 transition-colors">
              <ImageCard item={item} />
-             
-             {/* Score Badge Overlay */}
-             {item.score && (
-                <div className="absolute top-3 right-3 z-10 flex items-center gap-1 text-xs font-mono font-bold bg-black/60 backdrop-blur-md px-2 py-1 rounded-full text-primary border border-white/10">
-                  <span className="text-primary">{(item.score * 100).toFixed(0)}%</span>
-                </div>
-             )}
           </div>
 
           {/* Content Section */}
-          <div className="flex flex-col flex-1 p-5 gap-3 relative z-10">
-            <h3 className="font-display font-bold text-lg leading-tight group-hover:text-primary transition-colors line-clamp-2">
-              {item.title}
-            </h3>
-            
-            <p className="text-sm text-white/60 line-clamp-3 leading-relaxed">
+          <div className="flex-1 p-8 flex flex-col gap-6 relative">
+            {/* Background noise effect on hover */}
+            <div className="absolute inset-0 bg-noise opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none" />
+
+            <div className="space-y-2 relative z-10">
+              <h3 className="text-2xl font-black uppercase italic tracking-tighter leading-none group-hover:text-primary transition-all duration-500">
+                {item.title}
+              </h3>
+              
+              <div className="flex flex-wrap gap-1.5">
+                {item.genres.slice(0, 5).map((genre) => (
+                  <span key={genre} className="text-[8px] font-mono uppercase tracking-[0.2em] text-white/30 bg-white/5 px-2 py-0.5 border border-white/5 group-hover:border-primary/20 group-hover:text-white/60 transition-colors">
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-[13px] text-white/40 line-clamp-3 font-light leading-relaxed group-hover:text-white/70 transition-colors">
               {item.text}
             </p>
+
+            {/* Metrics Grid */}
+            <div className="mt-auto grid grid-cols-3 gap-4 pt-6 border-t border-white/5 group-hover:border-primary/20 transition-colors relative z-10">
+              <div className="space-y-1">
+                 <div className="flex items-center gap-1.5 text-[7px] font-mono uppercase text-white/20 tracking-widest">
+                    <Activity className="w-2 h-2" /> Semantic
+                 </div>
+                 <div className="h-1 w-full bg-white/5 overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(item.similarity || 0) * 100}%` }}
+                      className="h-full bg-white/40 group-hover:bg-primary transition-colors"
+                    />
+                 </div>
+              </div>
+              
+              <div className="space-y-1">
+                 <div className="flex items-center gap-1.5 text-[7px] font-mono uppercase text-white/20 tracking-widest">
+                    <Cpu className="w-2 h-2" /> Keyword
+                 </div>
+                 <div className="h-1 w-full bg-white/5 overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(item.keywordBoost || 0) * 100}%` }}
+                      className="h-full bg-white/20 group-hover:bg-primary transition-colors"
+                    />
+                 </div>
+              </div>
+
+              <div className="space-y-1">
+                 <div className="flex items-center gap-1.5 text-[7px] font-mono uppercase text-white/20 tracking-widest">
+                    <Zap className="w-2 h-2" /> Intent
+                 </div>
+                 <div className="h-1 w-full bg-white/5 overflow-hidden">
+                    <motion.div 
+                      initial={{ width: 0 }}
+                      animate={{ width: `${(item.genreBoost || 0) * 100}%` }}
+                      className="h-full bg-white/10 group-hover:bg-primary transition-colors"
+                    />
+                 </div>
+              </div>
+            </div>
+
+            {/* Reason Tooltip (if genre matched) */}
+            {item.reason && (
+               <div className="absolute top-2 right-4 text-[7px] font-mono text-primary/60 uppercase animate-pulse">
+                 {item.reason}
+               </div>
+            )}
             
-            <div className="flex flex-wrap gap-1 mt-auto pt-2">
-              {item.genres.slice(0, 3).map((genre) => (
-                <span key={genre} className="text-[10px] uppercase tracking-wider text-secondary-foreground/70 bg-white/5 px-2 py-0.5 rounded-full border border-white/5 mx-0.5">
-                  {genre}
-                </span>
-              ))}
+            <div className="flex items-center justify-between mt-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-500">
+               <div className="font-mono text-[14px] font-bold text-primary">
+                 {(item.score! * 100).toFixed(0)}% <span className="text-[8px] opacity-40 uppercase tracking-widest ml-1">Relevance_Score</span>
+               </div>
+               <button className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-[0.2em] text-white hover:text-primary transition-colors">
+                 Access_Data <ChevronRight className="w-3 h-3" />
+               </button>
             </div>
           </div>
+          
+          {/* Decorative side accent */}
+          <div className="absolute top-0 right-0 w-[2px] h-0 bg-primary group-hover:h-full transition-all duration-1000" />
         </motion.div>
       ))}
     </motion.div>

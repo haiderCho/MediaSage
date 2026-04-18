@@ -8,10 +8,12 @@ export const dynamic = 'force-dynamic';
 
 interface ItemMeta {
   id: string;
+  external_id?: string;
   type: string;
   title: string;
   genres: string[];
   popularity: number;
+  text: string;
 }
 
 type CategoryCache = {
@@ -62,9 +64,7 @@ async function loadCategory(category: string) {
     const embPath = path.join(process.cwd(), 'data', folder, 'embeddings.npy');
     
     if (fs.existsSync(embPath)) {
-      // Read .npy file (numpy format)
       const buffer = fs.readFileSync(embPath);
-      // Parse numpy header and get data
       const npyData = parseNpy(buffer);
       catCache.embeddings = npyData.data;
       catCache.dimension = npyData.shape[1];
@@ -75,12 +75,21 @@ async function loadCategory(category: string) {
   }
 
   if (!catCache.metadata) {
-    console.log(`Loading metadata for ${category}...`);
-    const metaPath = path.join(process.cwd(), 'data', folder, 'metadata.json');
-    if (fs.existsSync(metaPath)) {
-      catCache.metadata = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+    console.log(`Loading metadata for ${category} from items.json...`);
+    const itemsPath = path.join(process.cwd(), 'data', folder, 'items.json');
+    if (fs.existsSync(itemsPath)) {
+      const data = JSON.parse(fs.readFileSync(itemsPath, 'utf-8'));
+      const rawItems = data.items || [];
+      
+      catCache.metadata = rawItems.map((item: any) => ({
+        ...item,
+        // Ensure genres are clean
+        genres: (item.genres || []).map((g: string) => g.trim()),
+        // Ensure external_id is present
+        external_id: item.external_id || item.id.split('_')[1]
+      }));
     } else {
-      console.warn(`Metadata not found for ${category}`);
+      console.warn(`Items file not found for ${category}`);
       catCache.metadata = [];
     }
   }
@@ -88,32 +97,21 @@ async function loadCategory(category: string) {
   return catCache;
 }
 
-// Parse numpy .npy file format
 function parseNpy(buffer: Buffer): { data: Float32Array; shape: number[] } {
-  // Numpy header starts with magic string \x93NUMPY
   const headerLen = buffer.readUInt16LE(8);
   const headerStr = buffer.toString('ascii', 10, 10 + headerLen);
-  
-  // Parse shape from header (e.g., "'shape': (10000, 384)")
   const shapeMatch = headerStr.match(/'shape':\s*\((\d+),\s*(\d+)\)/);
   const shape = shapeMatch ? [parseInt(shapeMatch[1]), parseInt(shapeMatch[2])] : [0, 384];
-  
-  // Data starts after header
   const dataStart = 10 + headerLen;
   const dataBuffer = buffer.slice(dataStart);
-  
-  // Convert to Float32Array
   const data = new Float32Array(dataBuffer.buffer, dataBuffer.byteOffset, dataBuffer.length / 4);
-  
   return { data, shape };
 }
 
-// Cosine similarity between two vectors
 function cosineSimilarity(a: number[], b: Float32Array, offset: number, dim: number): number {
   let dot = 0;
   let normA = 0;
   let normB = 0;
-  
   for (let i = 0; i < dim; i++) {
     const ai = a[i];
     const bi = b[offset + i];
@@ -121,67 +119,83 @@ function cosineSimilarity(a: number[], b: Float32Array, offset: number, dim: num
     normA += ai * ai;
     normB += bi * bi;
   }
-  
   return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }
 
-async function search(category: string, query: string, k: number = 20) {
-  console.log(`Searching category: ${category} with query: "${query}"`);
+async function search(category: string, query: string, k: number = 10) {
   const catCache = await loadCategory(category);
   const embedder = await getEmbedder();
   
   if (!catCache.embeddings || !catCache.metadata || catCache.metadata.length === 0) {
-    console.warn(`Empty category data for ${category}`);
     return [];
   }
 
-  // 1. Embed query
-  console.log("Embedding query...");
   const output = await embedder(query, { pooling: 'mean', normalize: true });
   const queryVector = Array.from(output.data) as number[];
-  console.log(`Query vector dim: ${queryVector.length}, Sample: ${queryVector.slice(0,5)}`);
   
   const dim = catCache.dimension;
   const numItems = catCache.metadata.length;
-  console.log(`Searching against ${numItems} items with dimension ${dim}`);
+  const lowerQuery = query.toLowerCase();
   
-  // 2. Calculate similarities
-  const similarities: { idx: number; similarity: number }[] = [];
+  // Extract potential genres from query for boosting
+  const allGenres = Array.from(new Set(catCache.metadata.flatMap(m => m.genres.map(g => g.toLowerCase()))));
+  const queryGenres = allGenres.filter(g => lowerQuery.includes(g));
+
+  const results = [];
   for (let i = 0; i < numItems; i++) {
-    const sim = cosineSimilarity(queryVector, catCache.embeddings, i * dim, dim);
-    if (i < 3) console.log(`Item ${i} sim: ${sim}`); // Debug first few
-    similarities.push({ idx: i, similarity: sim });
+    const item = catCache.metadata[i];
+    const semanticSim = cosineSimilarity(queryVector, catCache.embeddings, i * dim, dim);
+    
+    // Keyword match boost
+    const title = item.title.toLowerCase();
+    let keywordBoost = 0;
+    if (title.includes(lowerQuery)) {
+      keywordBoost = 1.0;
+    } else {
+      const queryTerms = lowerQuery.split(/\s+/).filter(t => t.length > 2);
+      const matches = queryTerms.filter(term => title.includes(term)).length;
+      if (queryTerms.length > 0) keywordBoost = matches / queryTerms.length;
+    }
+
+    // Genre boost
+    let genreBoost = 0;
+    if (queryGenres.length > 0) {
+      const itemGenres = item.genres.map(g => g.toLowerCase());
+      const genreMatches = queryGenres.filter(g => itemGenres.includes(g)).length;
+      genreBoost = genreMatches / queryGenres.length;
+    }
+
+    // Popularity is already normalized 0-1 in our data prep
+    const popularity = item.popularity || 0;
+
+    // Weighting: 40% Semantic, 25% Keyword, 15% Genre, 20% Popularity
+    const finalScore = (0.4 * semanticSim) + (0.25 * keywordBoost) + (0.15 * genreBoost) + (0.2 * popularity);
+
+    results.push({
+      ...item,
+      score: finalScore,
+      similarity: semanticSim,
+      keywordBoost,
+      genreBoost,
+      reason: genreBoost > 0 ? `Matches genre intent: ${queryGenres.join(', ')}` : undefined
+    });
   }
   
-  // 3. Sort by similarity
-  similarities.sort((a, b) => b.similarity - a.similarity);
-  console.log(`Top similarity: ${similarities[0]?.similarity}`);
-  
-  // 4. Take top k*2 for reranking
-  const topResults = similarities.slice(0, k * 2);
-  
-  // 5. Rerank with popularity
-  const results = topResults.map(({ idx, similarity }) => {
-    const item = catCache.metadata![idx];
-    const score = (0.8 * similarity) + (0.2 * (item.popularity || 0));
-    return { ...item, score, similarity };
-  });
-  
-  // 6. Sort by final score and return top k
-  return results.sort((a, b) => b.score - a.score).slice(0, k);
+  return results
+    .sort((a, b) => b.score - a.score)
+    .slice(0, k);
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { category, query, k = 20 } = body;
+    const { category, query, k = 10 } = body;
     
     if (!category || !query) {
       return NextResponse.json({ error: 'Missing category or query' }, { status: 400 });
     }
     
     const results = await search(category, query, parseInt(k));
-    
     return NextResponse.json({ results });
   } catch (error: any) {
     console.error('Search error:', error);

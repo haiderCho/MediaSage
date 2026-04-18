@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 :root {
-  --background: #050505;
-  --foreground: #ededed;
+  --background: #0A0A0A;
+  --foreground: #EDEDED;
 
-  /* Vivid Rose/Red for accents */
-  --primary: #f43f5e;
-  --primary-dark: #be123c;
+  /* Cyber-Electric Acid Green */
+  --primary: #cbfb45;
+  --primary-dark: #b5e43a;
 
-  /* Zinc-900 */
-  --secondary: #18181b;
+  /* Charcoal/Black */
+  --secondary: #141414;
   --secondary-foreground: #a1a1aa;
 }
 
@@ -41,4 +41,15 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+@keyframes scan {
+  from { top: 0%; }
+  to { top: 100%; }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
 }
