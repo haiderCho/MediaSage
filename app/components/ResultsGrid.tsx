@@ -55,7 +55,7 @@ export default function ResultsGrid({ results }: Props) {
         <motion.div
           key={item.id}
           variants={itemAnim}
-          className="group flex flex-col md:flex-row bg-[#080808] border-2 border-white/5 hover:border-primary transition-all duration-700 overflow-hidden relative"
+          className="group flex flex-col md:flex-row bg-[#080808] border-2 border-white/5 hover:border-primary transition-all duration-700 overflow-hidden relative md:h-[280px]"
         >
           {/* Rank Index */}
           <div className="absolute top-0 left-0 bg-primary text-black px-3 py-1 font-mono text-[10px] font-black z-30 italic">
@@ -63,12 +63,12 @@ export default function ResultsGrid({ results }: Props) {
           </div>
 
           {/* Image Section */}
-          <div className="w-full md:w-52 h-64 md:h-auto shrink-0 relative overflow-hidden bg-black border-r border-white/5 group-hover:border-primary/20 transition-colors">
+          <div className="w-full md:w-48 h-48 md:h-full shrink-0 relative overflow-hidden bg-black border-b md:border-b-0 md:border-r border-white/5 group-hover:border-primary/20 transition-colors">
              <ImageCard item={item} />
           </div>
 
           {/* Content Section */}
-          <div className="flex-1 p-8 flex flex-col gap-6 relative">
+          <div className="flex-1 p-6 flex flex-col gap-4 relative overflow-hidden">
             {/* Background noise effect on hover */}
             <div className="absolute inset-0 bg-noise opacity-0 group-hover:opacity-10 transition-opacity pointer-events-none" />
 
@@ -91,7 +91,7 @@ export default function ResultsGrid({ results }: Props) {
             </p>
 
             {/* Metrics Grid */}
-            <div className="mt-auto grid grid-cols-3 gap-4 pt-6 border-t border-white/5 group-hover:border-primary/20 transition-colors relative z-10">
+            <div className="mt-auto grid grid-cols-3 gap-4 pt-4 border-t border-white/5 group-hover:border-primary/20 transition-colors relative z-10">
               <div className="space-y-1">
                  <div className="flex items-center gap-1.5 text-[7px] font-mono uppercase text-white/20 tracking-widest">
                     <Activity className="w-2 h-2" /> Semantic
@@ -139,12 +139,12 @@ export default function ResultsGrid({ results }: Props) {
                </div>
             )}
             
-            <div className="flex items-center justify-between mt-2 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-500">
-               <div className="font-mono text-[14px] font-bold text-primary">
-                 {(item.score! * 100).toFixed(0)}% <span className="text-[8px] opacity-40 uppercase tracking-widest ml-1">Relevance_Score</span>
+            <div className="flex items-center justify-between mt-1 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0 duration-500">
+               <div className="font-mono text-[12px] font-bold text-primary">
+                 {(item.score! * 100).toFixed(0)}% <span className="text-[7px] opacity-40 uppercase tracking-widest ml-1">Match</span>
                </div>
-               <button className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-[0.2em] text-white hover:text-primary transition-colors">
-                 Access_Data <ChevronRight className="w-3 h-3" />
+               <button className="flex items-center gap-1 text-[8px] font-mono uppercase tracking-[0.2em] text-white hover:text-primary transition-colors">
+                 Access <ChevronRight className="w-3 h-3" />
                </button>
             </div>
           </div>

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Item } from '@/data/schema';
-import { Image as ImageIcon, Search, ShieldAlert } from 'lucide-react';
+import { Image as ImageIcon, Search } from 'lucide-react';
 
 interface Props {
   item: Item;
@@ -20,17 +20,7 @@ export default function ImageCard({ item }: Props) {
   useEffect(() => {
     let mounted = true;
     
-    if (imageCache[item.id] !== undefined) {
-      if (imageCache[item.id] === null) {
-        setError(true);
-        setLoading(false);
-      } else {
-        setImageUrl(imageCache[item.id]);
-        setLoading(false);
-        setError(false);
-      }
-      return;
-    }
+    if (imageCache[item.id] !== undefined) return;
 
     if (fetchAttempted.current) return;
 
@@ -66,9 +56,12 @@ export default function ImageCard({ item }: Props) {
           const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=intitle:${encodeURIComponent(item.title)}&maxResults=1`);
           if (res.ok) {
             const data = await res.json();
-            if (data.items?.[0]?.volumeInfo?.imageLinks?.thumbnail) {
-              // Get higher res version by removing zoom/curl params if they exist or just replacing zoom
-              url = data.items[0].volumeInfo.imageLinks.thumbnail.replace('&edge=curl', '').replace('zoom=1', 'zoom=3');
+            if (data.items?.[0]?.volumeInfo?.imageLinks) {
+              const links = data.items[0].volumeInfo.imageLinks;
+              // Prioritize extraLarge -> large -> medium -> thumbnail
+              url = links.extraLarge || links.large || links.medium || links.thumbnail;
+              // Ensure we get high res by replacing zoom/edge params
+              url = url.replace('&edge=curl', '').replace(/zoom=\d/, 'zoom=3');
             }
           }
         }
@@ -94,7 +87,7 @@ export default function ImageCard({ item }: Props) {
             setLoading(false);
           }
         }
-      } catch (err) {
+      } catch (_err) {
         if (mounted) {
           imageCache[item.id] = null;
           setError(true);
@@ -130,27 +123,37 @@ export default function ImageCard({ item }: Props) {
 
   if (error || !imageUrl) {
     return (
-      <div className="w-full h-full bg-[#050505] flex flex-col items-center justify-center p-6 text-center border-2 border-white/5 group relative">
-        <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-        <ShieldAlert className="w-10 h-10 mb-4 text-red-500/40 group-hover:text-red-500 transition-colors" />
-        <div className="space-y-1 z-10">
-            <span className="block text-[8px] font-mono text-red-500/60 uppercase tracking-widest">Signal_Lost</span>
-            <span className="block text-[10px] uppercase font-bold text-white/40 group-hover:text-white transition-colors line-clamp-2">
-            {item.title}
-            </span>
+      <div className="w-full h-full bg-[#080808] flex flex-col items-center justify-center p-6 text-center border-2 border-white/5 group relative overflow-hidden">
+        {/* Animated background pattern */}
+        <div className="absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,var(--primary)_0%,transparent_70%)] animate-pulse" />
+            <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_20px,rgba(255,255,255,0.05)_20px,rgba(255,255,255,0.05)_40px)]" />
         </div>
-        
-        <button 
-            onClick={() => {
-                fetchAttempted.current = false;
-                delete imageCache[item.id];
-                setLoading(true);
-                setError(false);
-            }}
-            className="mt-6 text-[9px] font-mono uppercase border border-white/10 px-4 py-2 hover:border-primary hover:text-primary transition-all z-10"
-        >
-            Retry_Sync
-        </button>
+
+        <div className="relative z-10 flex flex-col items-center">
+            <div className="w-12 h-12 mb-4 rounded-full border border-white/10 flex items-center justify-center group-hover:border-primary/40 transition-colors bg-white/5">
+                <ImageIcon className="w-5 h-5 text-white/20 group-hover:text-primary/60 transition-colors" />
+            </div>
+            
+            <div className="space-y-1">
+                <span className="block text-[7px] font-mono text-white/20 uppercase tracking-[0.3em]">Data_Unavailable</span>
+                <span className="block text-[11px] uppercase font-bold text-white/40 group-hover:text-white/80 transition-colors line-clamp-2 px-2">
+                    {item.title}
+                </span>
+            </div>
+            
+            <button 
+                onClick={() => {
+                    fetchAttempted.current = false;
+                    delete imageCache[item.id];
+                    setLoading(true);
+                    setError(false);
+                }}
+                className="mt-6 text-[8px] font-mono uppercase border border-white/10 px-5 py-2.5 hover:border-primary hover:text-primary transition-all bg-black/40 backdrop-blur-sm"
+            >
+                Retry_Fetch
+            </button>
+        </div>
       </div>
     );
   }
@@ -161,7 +164,7 @@ export default function ImageCard({ item }: Props) {
       <img 
         src={imageUrl} 
         alt={item.title} 
-        className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-110 filter grayscale brightness-75 group-hover:grayscale-0 group-hover:brightness-100"
+        className="w-full h-full object-cover transition-all duration-1000 group-hover:scale-105 filter grayscale-[0.2] brightness-90 group-hover:grayscale-0 group-hover:brightness-105"
         loading="lazy"
       />
       

@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import path from 'path';
 import fs from 'fs';
-import { pipeline } from '@xenova/transformers';
+import { pipeline, type FeatureExtractionPipeline } from '@xenova/transformers';
 
 // Force dynamic to allow file reading
 export const dynamic = 'force-dynamic';
@@ -30,7 +30,7 @@ const cache: Record<string, CategoryCache> = {
 };
 
 // Global embedder to save memory
-let globalEmbedder: any = null;
+let globalEmbedder: FeatureExtractionPipeline | null = null;
 
 async function getEmbedder() {
   if (!globalEmbedder) {
@@ -81,7 +81,7 @@ async function loadCategory(category: string) {
       const data = JSON.parse(fs.readFileSync(itemsPath, 'utf-8'));
       const rawItems = data.items || [];
       
-      catCache.metadata = rawItems.map((item: any) => ({
+      catCache.metadata = rawItems.map((item: ItemMeta) => ({
         ...item,
         // Ensure genres are clean
         genres: (item.genres || []).map((g: string) => g.trim()),
@@ -168,8 +168,37 @@ async function search(category: string, query: string, k: number = 10) {
     // Popularity is already normalized 0-1 in our data prep
     const popularity = item.popularity || 0;
 
-    // Weighting: 40% Semantic, 25% Keyword, 15% Genre, 20% Popularity
-    const finalScore = (0.4 * semanticSim) + (0.25 * keywordBoost) + (0.15 * genreBoost) + (0.2 * popularity);
+    // Adaptive Weighting Strategy
+    const wordCount = lowerQuery.split(/\s+/).filter(t => t.length > 0).length;
+    let weights = { semantic: 0.4, keyword: 0.25, genre: 0.15, popularity: 0.2 };
+
+    // Exact text match check (for synopsis copying)
+    const normalizedItemText = item.text.toLowerCase().replace(/\s+/g, ' ');
+    const normalizedQuery = lowerQuery.replace(/\s+/g, ' ');
+    const isExactTextMatch = normalizedItemText.includes(normalizedQuery) || normalizedQuery.includes(normalizedItemText);
+    
+    // Non-linear scaling for high-confidence semantic matches
+    const scaledSemantic = semanticSim > 0.5 ? 1 - Math.pow(1 - semanticSim, 2.5) : semanticSim;
+
+    let finalScore = 0;
+
+    if (isExactTextMatch && wordCount > 10) {
+      // DIRECT HIT: Override weights for exact synopsis matches
+      finalScore = 0.98 + (semanticSim * 0.019); // Lock between 98% and 99.9%
+    } else {
+      if (wordCount > 8) {
+        // Synopsis Mode
+        weights = { semantic: 0.85, keyword: 0.05, genre: 0.05, popularity: 0.05 };
+      } else if (keywordBoost > 0.8) {
+        // Title Match Mode
+        weights = { semantic: 0.2, keyword: 0.7, genre: 0.05, popularity: 0.05 };
+      }
+
+      finalScore = (weights.semantic * scaledSemantic) + 
+                   (weights.keyword * keywordBoost) + 
+                   (weights.genre * genreBoost) + 
+                   (weights.popularity * popularity);
+    }
 
     results.push({
       ...item,
@@ -197,8 +226,9 @@ export async function POST(request: Request) {
     
     const results = await search(category, query, parseInt(k));
     return NextResponse.json({ results });
-  } catch (error: any) {
-    console.error('Search error:', error);
-    return NextResponse.json({ error: 'Internal server error', details: error.message }, { status: 500 });
+  } catch (err) {
+    console.error('Search error:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: 'Internal server error', details: message }, { status: 500 });
   }
 }
